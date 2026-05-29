@@ -16,6 +16,14 @@ VIDEOMAKER_INPUT = os.path.join(VIDEOMAKER_DIR, 'input')
 OLLAMA_URL       = "http://localhost:11434"
 IMAGE_EXTS       = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
 
+# Google OAuth2
+GOOGLE_CREDS_FILE = os.path.join(BASE_DIR, 'credentials.json')
+GOOGLE_TOKEN_FILE = os.path.join(BASE_DIR, 'token.json')
+GOOGLE_SCOPES     = [
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/youtube.force-ssl'
+]
+
 # Memory on D: drive — falls back to C:\KJ2\KJ2_Memory if D: not available
 MEMORY_DIR  = 'D:\\KJ2_Memory'
 MEMORY_PATH = os.path.join(MEMORY_DIR, 'kj2_memory.json')
@@ -28,20 +36,32 @@ except Exception:
 
 os.makedirs(VIDEOMAKER_INPUT, exist_ok=True)
 
+# Load Tavily API key from config.json
+def load_app_config():
+    cfg_path = os.path.join(BASE_DIR, 'config.json')
+    if os.path.exists(cfg_path):
+        with open(cfg_path, 'r') as f:
+            return json.load(f)
+    return {}
+
+APP_CONFIG     = load_app_config()
+TAVILY_API_KEY = APP_CONFIG.get('tavily_api_key', '')
+
 # ── Capabilities registry ───────────────────────────────────────────────────────
 CAPABILITIES = {
-    'web_search':     {'label': 'Web Search',        'desc': 'Search the internet for real-time results',               'packages': ['googlesearch-python']},
-    'open_browser':   {'label': 'Open Browser Tab',  'desc': 'Open a new browser tab (Google, YouTube, SoundCloud etc)', 'packages': []},
-    'web_reader':     {'label': 'Web Page Reader',   'desc': 'Fetch and read content from any URL you give',           'packages': ['requests', 'beautifulsoup4']},
-    'file_search':    {'label': 'File Search',       'desc': 'Search folders on your computer for files by name',       'packages': []},
-    'open_files':     {'label': 'Open Files & Apps', 'desc': 'Open programs, documents and folders on your computer',  'packages': []},
-    'weather':        {'label': 'Weather',           'desc': 'Get current weather for any location',                   'packages': ['requests']},
-    'clipboard':      {'label': 'Clipboard',         'desc': 'Read from and write to your clipboard',                  'packages': ['pyperclip']},
-    'text_to_speech': {'label': 'Text to Speech',    'desc': 'KJ2 speaks responses out loud',                         'packages': ['pyttsx3']},
-    'shell_commands': {'label': 'Run Commands',      'desc': 'Run commands on your computer on your behalf',           'packages': []},
-    'email_draft':    {'label': 'Email Draft',       'desc': 'Write emails and copy them to your clipboard ready to paste', 'packages': ['pyperclip']},
-    'web_automation': {'label': 'Web Automation',    'desc': 'Fill out forms on websites — you approve before anything is submitted', 'packages': ['selenium', 'webdriver-manager']},
-    'memory':         {'label': 'Memory',            'desc': 'Remember things you tell KJ2 (stored on your D: drive)', 'packages': []},
+    'web_search':     {'label': 'Web Search (Tavily)', 'desc': 'Search the internet for real-time results via Tavily',          'packages': ['tavily-python']},
+    'open_browser':   {'label': 'Open Browser Tab',    'desc': 'Open a new browser tab (Google, YouTube, SoundCloud etc)',      'packages': []},
+    'web_reader':     {'label': 'Web Page Reader',     'desc': 'Fetch and read content from any URL — powered by Tavily',       'packages': ['tavily-python']},
+    'file_search':    {'label': 'File Search',         'desc': 'Search folders on your computer for files by name',             'packages': []},
+    'open_files':     {'label': 'Open Files & Apps',   'desc': 'Open programs, documents and folders on your computer',        'packages': []},
+    'weather':        {'label': 'Weather',             'desc': 'Get current weather for any location',                         'packages': ['requests']},
+    'clipboard':      {'label': 'Clipboard',           'desc': 'Read from and write to your clipboard',                        'packages': ['pyperclip']},
+    'text_to_speech': {'label': 'Text to Speech',      'desc': 'KJ2 speaks responses out loud',                               'packages': ['pyttsx3']},
+    'shell_commands': {'label': 'Run Commands',        'desc': 'Run commands on your computer on your behalf',                 'packages': []},
+    'email_draft':    {'label': 'Gmail',               'desc': 'Read, draft and manage kandltjones@gmail.com via Gmail API',   'packages': ['google-auth-oauthlib', 'google-api-python-client']},
+    'youtube':        {'label': 'YouTube',             'desc': 'Manage your Jonesy200Music YouTube channel via YouTube API',   'packages': ['google-auth-oauthlib', 'google-api-python-client']},
+    'web_automation': {'label': 'Web Automation',      'desc': 'Fill out forms on websites — you approve before submit',       'packages': ['selenium', 'webdriver-manager']},
+    'memory':         {'label': 'Memory',              'desc': 'Remember things you tell KJ2 (stored on your D: drive)',       'packages': []},
 }
 
 # Keywords that trigger each capability
@@ -55,7 +75,8 @@ TOOL_TRIGGERS = {
     'clipboard':      r'\b(clipboard|what did i copy|read my clipboard|what is on my clipboard)\b',
     'text_to_speech': r'\b(read (that |it |this )?aloud|speak (that|it|this)|say that out loud|read (that|it) to me)\b',
     'shell_commands': r'\b(run (this |the )?(command|script)|execute|open (command|cmd|terminal|powershell))\b',
-    'email_draft':    r'\b(write (an |a )?email|draft (an |a )?email|email to|compose (an |a )?email)\b',
+    'email_draft':    r'\b(write (an |a )?email|draft (an |a )?email|email to|compose (an |a )?email|check (my )?emails?|read (my )?emails?|any new emails?|unread emails?)\b',
+    'youtube':        r'\b(my channel|my youtube|jonesy200 channel|video stats|my subscribers|my videos|channel stats)\b',
     'web_automation': r'\b(fill (in|out)|submit (a |the )?form|go to .{1,30} and (fill|login|sign)|log (in|into)|automate)\b',
     'memory':         r'\b(remember|don\'?t forget|keep in mind|note that|store this|save (it |this )?(to )?memory|save to memory|make a note|add to memory|log this|write this down)\b',
 }
@@ -64,7 +85,7 @@ TOOL_TRIGGERS = {
 
 def load_config():
     if not os.path.exists(CONFIG_PATH):
-        return {"user_name": "there", "story": "", "permanent_rules": [],
+        return {"user_name": "Keith", "story": "", "permanent_rules": [],
                 "answers": {}, "extra_instructions": [], "image_generator_url": "",
                 "permissions": {}, "file_search_exceptions": []}
     with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -109,7 +130,6 @@ def has_permission(capability):
     return cfg.get('permissions', {}).get(capability, False)
 
 def pip_install(package):
-    """Install a package via pip and return the result string."""
     for py in ['python', 'python3', 'py']:
         try:
             result = subprocess.run(
@@ -118,7 +138,6 @@ def pip_install(package):
             )
             if result.returncode == 0:
                 return f"Installed {package}."
-            # try next python alias
         except FileNotFoundError:
             continue
         except Exception as e:
@@ -129,12 +148,40 @@ def grant_permission(capability):
     cfg = load_config()
     cfg.setdefault('permissions', {})[capability] = True
     save_config(cfg)
-    cap = CAPABILITIES.get(capability, {})
+    cap  = CAPABILITIES.get(capability, {})
     pkgs = cap.get('packages', [])
     results = []
     for pkg in pkgs:
         results.append(pip_install(pkg))
     return results
+
+# ── Google OAuth2 ──────────────────────────────────────────────────────────────
+
+def get_google_credentials():
+    """Return valid Google OAuth2 credentials, refreshing or re-authorising as needed."""
+    try:
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from google.auth.transport.requests import Request as GoogleRequest
+
+        creds = None
+        if os.path.exists(GOOGLE_TOKEN_FILE):
+            creds = Credentials.from_authorized_user_file(GOOGLE_TOKEN_FILE, GOOGLE_SCOPES)
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(GoogleRequest())
+            else:
+                if not os.path.exists(GOOGLE_CREDS_FILE):
+                    return None, "credentials.json not found in C:\\KJ2\\"
+                flow  = InstalledAppFlow.from_client_secrets_file(GOOGLE_CREDS_FILE, GOOGLE_SCOPES)
+                creds = flow.run_local_server(port=0)
+            with open(GOOGLE_TOKEN_FILE, 'w') as token:
+                token.write(creds.to_json())
+        return creds, None
+    except ImportError:
+        return None, "Google libraries not installed. Run: pip install google-auth-oauthlib google-api-python-client"
+    except Exception as e:
+        return None, f"Google auth error: {e}"
 
 # ── Ollama ─────────────────────────────────────────────────────────────────────
 
@@ -161,7 +208,7 @@ def build_system():
     mem_txt = '\n'.join(f"- {m}" for m in memory) if memory else ''
     perms   = cfg.get('permissions', {})
     perm_txt = ', '.join(k.replace('_',' ') for k, v in perms.items() if v) or 'none yet'
-    name = cfg.get('user_name', 'your owner')
+    name = cfg.get('user_name', 'Keith')
     return (
         f"You are KJ2, the personal AI agent of {name}.\n\n"
 
@@ -175,7 +222,7 @@ def build_system():
         "7. NEVER greet the owner. Do NOT start responses with 'G'day Keith', 'Hi Keith', 'Hello', or any greeting. Start with the actual answer.\n"
         "8. NEVER invent song names, YouTube videos, or any content from the owner's music catalogue. If you don't know a song name, say you don't know it — do NOT make one up.\n"
         "9. If the owner asks about their own details (YouTube channel, artist name, website, etc.) and it is in the OWNER PROFILE or MEMORY above, use that information. Do NOT do a web search for it.\n"
-        "10. When doing a web search, construct a specific useful query using the owner's real name/channel from OWNER PROFILE — never search for vague phrases like 'my youtube channel'.\n\n"
+        "10. When doing a web search, use Tavily and construct a specific useful query using the owner's real name/channel from OWNER PROFILE — never search for vague phrases like 'my youtube channel'.\n\n"
 
         f"PERMANENT RULES FROM OWNER:\n{rules}\n\n"
         f"OWNER PROFILE:\n{cfg.get('story', '')}\n\n"
@@ -184,11 +231,13 @@ def build_system():
         f"MEMORY:\n{mem_txt}\n\n"
         f"ACTIVE CAPABILITIES:\n{perm_txt}\n\n"
         "USING TOOLS:\n"
-        "- shell_commands: you can run any Windows command or install packages. Use `pip install <package>` to install anything you need. Always run pip install before using a new package.\n"
-        "- web_search: search the web and return real results. Copy the actual titles, snippets and URLs verbatim from the results. Do NOT invent article titles, publication dates, or sources. If the results do not contain what was searched for, say so plainly.\n"
-        "- open_browser: open a browser tab to any URL.\n"
-        "- web_automation: open Chrome and fill/submit web forms (needs approval before submit).\n"
-        "- If you need a Python package, use shell_commands to pip install it first.\n\n"
+        "- web_search: searches via Tavily API — real verified results only. Copy titles, snippets and URLs verbatim. Do NOT invent results.\n"
+        "- web_reader: reads any URL via Tavily extract — real page content only.\n"
+        "- email_draft: reads and drafts emails via Gmail API — kandltjones@gmail.com.\n"
+        "- youtube: manages Jonesy200Music channel via YouTube API.\n"
+        "- open_browser: opens a browser tab to any URL.\n"
+        "- web_automation: opens Chrome and fills/submits web forms (needs approval before submit).\n"
+        "- shell_commands: runs Windows commands. Use pip install before using new packages.\n\n"
         f"Speak directly to {name}. Australian tone. Short answers. No corporate filler. No volunteered updates."
     )
 
@@ -204,36 +253,21 @@ def detect_tool(message):
 # ── Tool executors ─────────────────────────────────────────────────────────────
 
 def tool_web_search(query):
-    import urllib.request as _ur
-    import urllib.parse as _up
-    import re
+    """Search the web using Tavily API — real results, no scraping."""
     try:
-        data = _up.urlencode({'q': query}).encode()
-        req = _ur.Request(
-            'https://lite.duckduckgo.com/lite/',
-            data=data,
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        )
-        with _ur.urlopen(req, timeout=10) as r:
-            html = r.read().decode('utf-8', errors='ignore')
-        links = re.findall(r"class='result-link'[^>]*>([^<]+)</a>", html)
-        urls = re.findall(r"class='result-link'\s+href=\"([^\"]+)\"", html)
-        if not urls:
-            urls = re.findall(r"href=\"(https?://[^\"]+)\"[^>]*class='result-link'", html)
-        snippets = re.findall(r"class='result-snippet'[^>]*>(.*?)</td>", html, re.DOTALL)
-        results = []
-        for i in range(min(5, len(links))):
-            title = links[i].strip() if i < len(links) else ""
-            url = urls[i].strip() if i < len(urls) else ""
-            snippet = re.sub(r'<[^>]+>', '', snippets[i]).strip() if i < len(snippets) else ""
+        from tavily import TavilyClient
+        client   = TavilyClient(api_key=TAVILY_API_KEY)
+        response = client.search(query=query, max_results=5)
+        results  = []
+        for r in response.get('results', []):
+            title   = r.get('title', '')
+            url     = r.get('url', '')
+            content = r.get('content', '')[:300]
             if title and url:
-                results.append(f"**{title}**\n{snippet}\n{url}")
-        if results:
-            return '\n\n'.join(results)
-        return "No results found."
+                results.append(f"**{title}**\n{content}\n{url}")
+        return '\n\n'.join(results) if results else "No results found."
+    except ImportError:
+        return "Tavily not installed. Run: pip install tavily-python"
     except Exception as e:
         return f"Search failed: {e}"
 
@@ -244,58 +278,26 @@ def tool_open_browser(url):
     except Exception as e:
         return f"Could not open browser: {e}"
 
-def tool_browser_search(query):
-    """Open Chrome with Selenium, go to Google, type the query and search — user sees it happen."""
-    try:
-        from selenium import webdriver
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.common.keys import Keys
-        from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
-        try:
-            from webdriver_manager.chrome import ChromeDriverManager
-            from selenium.webdriver.chrome.service import Service
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=Options())
-        except Exception:
-            driver = webdriver.Chrome(options=Options())
-        driver.get('https://www.google.com')
-        wait = WebDriverWait(driver, 10)
-        box = wait.until(EC.presence_of_element_located((By.NAME, 'q')))
-        box.clear()
-        box.send_keys(query)
-        box.send_keys(Keys.RETURN)
-        return f"Searched Google for: {query}"
-    except ImportError:
-        # Selenium not installed — fall back to opening the URL directly
-        import urllib.parse
-        webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote_plus(query)}")
-        return f"Opened Google search for: {query}"
-    except Exception as e:
-        import urllib.parse
-        webbrowser.open(f"https://www.google.com/search?q={urllib.parse.quote_plus(query)}")
-        return f"Opened Google search for: {query} (Selenium error: {e})"
-
 def tool_web_reader(url):
+    """Read a webpage using Tavily extract — clean content, no scraping."""
     try:
-        import requests as req_lib
-        from bs4 import BeautifulSoup
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        r = req_lib.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        for tag in soup(['script', 'style', 'nav', 'footer', 'header']):
-            tag.decompose()
-        text = ' '.join(soup.get_text(separator=' ').split())
-        return text[:4000]
+        from tavily import TavilyClient
+        client   = TavilyClient(api_key=TAVILY_API_KEY)
+        response = client.extract(urls=[url])
+        results  = response.get('results', [])
+        if results:
+            return results[0].get('raw_content', '')[:4000]
+        return "Could not extract content from that page."
+    except ImportError:
+        return "Tavily not installed. Run: pip install tavily-python"
     except Exception as e:
         return f"Could not read page: {e}"
 
 def tool_file_search(query):
     try:
-        cfg = load_config()
+        cfg        = load_config()
         exceptions = cfg.get('file_search_exceptions', [])
-        results = []
+        results    = []
         search_roots = ['C:\\Users', 'D:\\', 'E:\\']
         for root in search_roots:
             if not os.path.exists(root):
@@ -373,11 +375,113 @@ def tool_open_file_or_app(target):
 
 def tool_memory_save(item):
     memory = load_memory()
-    ts = time.strftime('%Y-%m-%d')
-    entry = f"[{ts}] {item}"
+    ts     = time.strftime('%Y-%m-%d')
+    entry  = f"[{ts}] {item}"
     memory.append(entry)
     save_memory(memory)
     return f"Remembered: {item}"
+
+# ── Gmail tools ────────────────────────────────────────────────────────────────
+
+def tool_gmail_read(max_results=10):
+    """Read recent unread emails from kandltjones@gmail.com."""
+    try:
+        from googleapiclient.discovery import build
+        creds, err = get_google_credentials()
+        if err:
+            return err
+        service  = build('gmail', 'v1', credentials=creds)
+        results  = service.users().messages().list(
+            userId='me', labelIds=['INBOX', 'UNREAD'], maxResults=max_results
+        ).execute()
+        messages = results.get('messages', [])
+        if not messages:
+            return "No unread emails."
+        emails = []
+        for msg in messages[:5]:
+            m       = service.users().messages().get(
+                userId='me', id=msg['id'], format='metadata',
+                metadataHeaders=['From', 'Subject', 'Date']
+            ).execute()
+            headers = {h['name']: h['value'] for h in m['payload']['headers']}
+            emails.append(
+                f"From: {headers.get('From','')}\n"
+                f"Subject: {headers.get('Subject','')}\n"
+                f"Date: {headers.get('Date','')}"
+            )
+        return '\n\n'.join(emails)
+    except Exception as e:
+        return f"Gmail error: {e}"
+
+def tool_gmail_send(to, subject, body):
+    """Draft and send an email via Gmail API — only called after owner approval."""
+    try:
+        import base64
+        from email.mime.text import MIMEText
+        from googleapiclient.discovery import build
+        creds, err = get_google_credentials()
+        if err:
+            return err
+        service = build('gmail', 'v1', credentials=creds)
+        msg     = MIMEText(body)
+        msg['to']      = to
+        msg['subject'] = subject
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        service.users().messages().send(userId='me', body={'raw': raw}).execute()
+        return f"Email sent to {to}."
+    except Exception as e:
+        return f"Gmail send error: {e}"
+
+# ── YouTube tools ──────────────────────────────────────────────────────────────
+
+def tool_youtube_stats():
+    """Get Jonesy200Music YouTube channel stats."""
+    try:
+        from googleapiclient.discovery import build
+        creds, err = get_google_credentials()
+        if err:
+            return err
+        youtube  = build('youtube', 'v3', credentials=creds)
+        response = youtube.channels().list(part='statistics,snippet', mine=True).execute()
+        items    = response.get('items', [])
+        if not items:
+            return "No channel found on this account."
+        ch    = items[0]
+        stats = ch['statistics']
+        name  = ch['snippet']['title']
+        return (
+            f"Channel: {name}\n"
+            f"Subscribers: {stats.get('subscriberCount','?')}\n"
+            f"Total views: {stats.get('viewCount','?')}\n"
+            f"Videos: {stats.get('videoCount','?')}"
+        )
+    except Exception as e:
+        return f"YouTube error: {e}"
+
+def tool_youtube_recent_videos(max_results=5):
+    """Get most recent videos from Jonesy200Music channel."""
+    try:
+        from googleapiclient.discovery import build
+        creds, err = get_google_credentials()
+        if err:
+            return err
+        youtube  = build('youtube', 'v3', credentials=creds)
+        response = youtube.search().list(
+            part='snippet', forMine=True, type='video',
+            order='date', maxResults=max_results
+        ).execute()
+        items = response.get('items', [])
+        if not items:
+            return "No videos found."
+        videos = []
+        for item in items:
+            title     = item['snippet']['title']
+            published = item['snippet']['publishedAt'][:10]
+            vid_id    = item['id']['videoId']
+            videos.append(f"{title} ({published})\nhttps://www.youtube.com/watch?v={vid_id}")
+        return '\n\n'.join(videos)
+    except Exception as e:
+        return f"YouTube error: {e}"
 
 # ── Flask ──────────────────────────────────────────────────────────────────────
 
@@ -394,7 +498,7 @@ def index():
 def config_info():
     cfg = load_config()
     return jsonify({
-        "user_name":           cfg.get('user_name', 'there'),
+        "user_name":           cfg.get('user_name', 'Keith'),
         "image_generator_url": cfg.get('image_generator_url', ''),
         "permanent_rules":     cfg.get('permanent_rules', []),
         "extra_instructions":  cfg.get('extra_instructions', []),
@@ -405,7 +509,7 @@ def config_info():
 
 @app.route('/permissions', methods=['GET'])
 def get_permissions():
-    cfg = load_config()
+    cfg    = load_config()
     result = {}
     for key, cap in CAPABILITIES.items():
         result[key] = {**cap, 'granted': cfg.get('permissions', {}).get(key, False)}
@@ -440,7 +544,7 @@ def chat():
     submit_match = re.match(r'^submit\s+([a-f0-9]{8})$', message, re.IGNORECASE)
     cancel_match = re.match(r'^cancel\s+([a-f0-9]{8})$', message, re.IGNORECASE)
     if submit_match:
-        sid = submit_match.group(1)
+        sid  = submit_match.group(1)
         sess = ACTIVE_SESSIONS.get(sid)
         if not sess:
             return jsonify({"response": "Session not found or already closed."})
@@ -449,7 +553,7 @@ def chat():
         try:
             from selenium.webdriver.common.by import By
             driver = sess['driver']
-            btns = driver.find_elements(By.CSS_SELECTOR, 'input[type=submit], button[type=submit], button')
+            btns   = driver.find_elements(By.CSS_SELECTOR, 'input[type=submit], button[type=submit], button')
             for btn in btns:
                 txt = btn.text.lower()
                 if any(w in txt for w in ['submit', 'send', 'apply', 'register', 'continue', 'next', 'sign up', 'join', 'save']):
@@ -461,7 +565,7 @@ def chat():
         except Exception as e:
             return jsonify({"response": f"Could not submit: {e}"})
     if cancel_match:
-        sid = cancel_match.group(1)
+        sid  = cancel_match.group(1)
         sess = ACTIVE_SESSIONS.get(sid)
         if sess:
             driver = sess.get('driver')
@@ -471,23 +575,22 @@ def chat():
             del ACTIVE_SESSIONS[sid]
         return jsonify({"response": "Cancelled. Browser closed, nothing was submitted.", "tool_used": "web_automation"})
 
-    # ── Web automation triggered from chat ────────────────────────────────────────
+    # ── Web automation triggered from chat ─────────────────────────────────────
     if re.search(TOOL_TRIGGERS['web_automation'], message, re.IGNORECASE):
         if not has_permission('web_automation'):
             cap = CAPABILITIES['web_automation']
             return jsonify({"permission_required": True, "capability": "web_automation",
                             "label": cap['label'], "description": cap['desc'],
                             "packages": cap['packages'], "original_message": message})
-        urls = re.findall(r'https?://\S+', message)
-        url  = urls[0] if urls else ''
+        urls     = re.findall(r'https?://\S+', message)
+        url      = urls[0] if urls else ''
         if not url:
             return jsonify({"response": "Give me the URL and I will open it and fill the form for you."})
-        # Kick off automation inline
-        prompt = (f"{build_system()}\n\n"
-                  f"Owner wants to fill a web form at: {url}\n"
-                  f"Task: {message}\n\n"
-                  f"Return ONLY a JSON object with field names as keys and values to fill. "
-                  f"Use only info from the owner profile. No explanation, just JSON. KJ2:")
+        prompt   = (f"{build_system()}\n\n"
+                    f"Owner wants to fill a web form at: {url}\n"
+                    f"Task: {message}\n\n"
+                    f"Return ONLY a JSON object with field names as keys and values to fill. "
+                    f"Use only info from the owner profile. No explanation, just JSON. KJ2:")
         raw_plan = ollama_generate(prompt)
         try:
             s = raw_plan.find('{'); e2 = raw_plan.rfind('}') + 1
@@ -505,8 +608,8 @@ def chat():
                          f"Once done it will be waiting on screen for your review.\n\n"
                          f"Type SUBMIT to send it or CANCEL to close without submitting."),
             "automation_session": session_id,
-            "field_plan": field_plan,
-            "tool_used": "web_automation"
+            "field_plan":         field_plan,
+            "tool_used":          "web_automation"
         })
 
     tool = detect_tool(message)
@@ -525,28 +628,30 @@ def chat():
     tool_result = None
 
     if tool == 'open_browser':
-        # Detect specific site or URL; default to Google
-        url_match = re.search(r'https?://\S+', message)
+        url_match  = re.search(r'https?://\S+', message)
         site_match = re.search(r'\b(youtube|soundcloud|spotify|google|twitter|facebook|instagram|reddit)\b', message, re.IGNORECASE)
         if url_match:
             url = url_match.group(0)
         elif site_match:
             site = site_match.group(1).lower()
-            url = {'youtube':'https://youtube.com','soundcloud':'https://soundcloud.com',
-                   'spotify':'https://open.spotify.com','google':'https://google.com',
-                   'twitter':'https://twitter.com','facebook':'https://facebook.com',
-                   'instagram':'https://instagram.com','reddit':'https://reddit.com'}.get(site,'https://google.com')
+            url  = {'youtube':   'https://youtube.com',
+                    'soundcloud':'https://soundcloud.com',
+                    'spotify':   'https://open.spotify.com',
+                    'google':    'https://google.com',
+                    'twitter':   'https://twitter.com',
+                    'facebook':  'https://facebook.com',
+                    'instagram': 'https://instagram.com',
+                    'reddit':    'https://reddit.com'}.get(site, 'https://google.com')
         else:
             url = 'https://google.com'
         tool_open_browser(url)
         return jsonify({"response": f"Opened {url} in your browser.", "tool_used": "open_browser"})
 
     elif tool == 'web_search':
-        # Strip intent words and surrounding quotes to get clean search query
         query = re.sub(r'\b(can you |please |could you )?(search for|look up|google|search|find online|research|find me|tell me about|what are the|give me the|find)\b', '', message, flags=re.IGNORECASE).strip()
         query = re.sub(r'\bcan you\b', '', query, flags=re.IGNORECASE).strip()
         query = query.strip(' ?.,\'"')
-        raw = tool_web_search(query or message)
+        raw   = tool_web_search(query or message)
         return jsonify({"response": raw, "tool_used": "web_search", "tool_result": raw})
 
     elif tool == 'web_reader':
@@ -557,38 +662,36 @@ def chat():
             tool_result = "No URL found in your message. Please include the full URL."
 
     elif tool == 'weather':
-        loc_match = re.search(r'weather (?:in |for |at )?(.+)', message, re.IGNORECASE)
-        location = loc_match.group(1).strip() if loc_match else 'current location'
+        loc_match   = re.search(r'weather (?:in |for |at )?(.+)', message, re.IGNORECASE)
+        location    = loc_match.group(1).strip() if loc_match else 'Townsville QLD'
         tool_result = tool_weather(location)
 
     elif tool == 'clipboard':
         tool_result = tool_clipboard_read()
 
     elif tool == 'file_search':
-        query = re.sub(r'\b(find file|find|search my computer|search files|locate|where is the file|where is)\b', '', message, flags=re.IGNORECASE).strip()
+        query       = re.sub(r'\b(find file|find|search my computer|search files|locate|where is the file|where is)\b', '', message, flags=re.IGNORECASE).strip()
         tool_result = tool_file_search(query or message)
 
     elif tool == 'memory':
-        mem_match = re.sub(r'\b(remember|don\'?t forget|keep in mind|note that|store this|save this to memory|make a note that?)\b', '', message, flags=re.IGNORECASE).strip()
+        mem_match  = re.sub(r'\b(remember|don\'?t forget|keep in mind|note that|store this|save this to memory|make a note that?)\b', '', message, flags=re.IGNORECASE).strip()
         save_result = tool_memory_save(mem_match or message)
         return jsonify({"response": "Saved to memory.", "tool_used": "memory", "tool_result": save_result})
 
     elif tool == 'shell_commands':
-        # Detect pip install requests first
         pip_match = re.search(r'(?:pip install|install)\s+([\w\-\[\]>=<.]+)', message, re.IGNORECASE)
-        cmd_match  = re.search(r'(?:run|execute|open cmd and run|run in cmd)\s+(.+)', message, re.IGNORECASE)
+        cmd_match = re.search(r'(?:run|execute|open cmd and run|run in cmd)\s+(.+)', message, re.IGNORECASE)
         if pip_match:
-            pkg = pip_match.group(1).strip()
+            pkg         = pip_match.group(1).strip()
             tool_result = pip_install(pkg)
         elif cmd_match:
             tool_result = tool_run_command(cmd_match.group(1).strip())
         else:
-            # Let the LLM decide what command to run based on the message
-            prompt = (f"{build_system()}\n\n"
-                      f"Owner asked: {message}\n\n"
-                      "You have shell_commands permission. Determine the exact Windows command to run and respond with ONLY: CMD: <command>\n"
-                      "Nothing else. No explanation. Just CMD: followed by the command. KJ2:")
-            llm_cmd = ollama_generate(prompt)
+            prompt   = (f"{build_system()}\n\n"
+                        f"Owner asked: {message}\n\n"
+                        "You have shell_commands permission. Determine the exact Windows command to run and respond with ONLY: CMD: <command>\n"
+                        "Nothing else. No explanation. Just CMD: followed by the command. KJ2:")
+            llm_cmd  = ollama_generate(prompt)
             cmd_line = re.search(r'CMD:\s*(.+)', llm_cmd)
             if cmd_line:
                 tool_result = tool_run_command(cmd_line.group(1).strip())
@@ -596,11 +699,29 @@ def chat():
                 tool_result = f"Ran: {llm_cmd[:200]}" if llm_cmd else "Could not determine command."
 
     elif tool == 'email_draft':
-        prompt = (f"{build_system()}\n\nUser wants to write an email. Request: {message}\n\n"
-                  "Write a complete professional email (Subject line + body). KJ2:")
-        draft = ollama_generate(prompt)
-        tool_clipboard_write(draft) if has_permission('clipboard') else None
-        return jsonify({"response": draft, "email_draft": True})
+        # Check if reading emails or drafting
+        if re.search(r'\b(check|read|any new|unread)\b', message, re.IGNORECASE):
+            tool_result = tool_gmail_read()
+        else:
+            # Draft an email
+            prompt = (f"{build_system()}\n\nOwner wants to write an email. Request: {message}\n\n"
+                      "Write a complete email (Subject line + body). KJ2:")
+            draft  = ollama_generate(prompt)
+            tool_clipboard_write(draft) if has_permission('clipboard') else None
+            return jsonify({
+                "response":     draft,
+                "email_draft":  True,
+                "tool_used":    "email_draft",
+                "note":         "Draft copied to clipboard. Say 'send this to [email]' to send via Gmail, or copy and paste it yourself."
+            })
+
+    elif tool == 'youtube':
+        if re.search(r'\b(stats|subscribers|views|videos|channel)\b', message, re.IGNORECASE):
+            tool_result = tool_youtube_stats()
+        elif re.search(r'\b(recent|latest|last|newest)\b', message, re.IGNORECASE):
+            tool_result = tool_youtube_recent_videos()
+        else:
+            tool_result = tool_youtube_stats()
 
     elif tool == 'text_to_speech':
         response = ollama_generate(f"{build_system()}\n\nUser: {message}\n\nKJ2:")
@@ -614,15 +735,28 @@ def chat():
         else:
             tool_result = "What would you like me to open?"
 
+    # Handle Gmail send command: "send this to someone@email.com"
+    send_match = re.match(r'send this to (.+@.+)', message, re.IGNORECASE)
+    if send_match and has_permission('email_draft'):
+        to      = send_match.group(1).strip()
+        memory  = load_memory()
+        # Find last draft in memory or ask LLM
+        prompt  = (f"{build_system()}\n\nOwner said: {message}\n\n"
+                   "What was the last email draft? If you don't have it, say NODRAFT. KJ2:")
+        draft   = ollama_generate(prompt)
+        if 'NODRAFT' not in draft:
+            result = tool_gmail_send(to, "KJ2 Draft", draft)
+            return jsonify({"response": f"Sent to {to}. {result}", "tool_used": "email_draft"})
+
     if tool_result:
-        prompt = (f"{build_system()}\n\n"
-                  f"TOOL JUST RAN: {tool}\n"
-                  f"User asked: {message}\n\n"
-                  f"=== REAL TOOL OUTPUT (report this — do not ignore it, do not make up different results) ===\n"
-                  f"{tool_result}\n"
-                  f"=== END TOOL OUTPUT ===\n\n"
-                  f"Report what the tool found above. If results are there, list them clearly. "
-                  f"Do NOT say you could not find anything if results are shown above. KJ2:")
+        prompt   = (f"{build_system()}\n\n"
+                    f"TOOL JUST RAN: {tool}\n"
+                    f"User asked: {message}\n\n"
+                    f"=== REAL TOOL OUTPUT (report this verbatim — do not ignore, do not make up different results) ===\n"
+                    f"{tool_result}\n"
+                    f"=== END TOOL OUTPUT ===\n\n"
+                    f"Report what the tool found above. If results are there, list them clearly. "
+                    f"Do NOT say you could not find anything if results are shown above. KJ2:")
         response = ollama_generate(prompt)
         return jsonify({"response": response, "tool_used": tool, "tool_result": tool_result})
 
@@ -646,7 +780,6 @@ def chat_file():
     fname   = f.filename or 'file'
     ext     = os.path.splitext(fname)[1].lower()
 
-    # Images — pass to Ollama vision if supported
     if ext in IMAGE_EXTS:
         import base64 as b64
         img_bytes = f.read()
@@ -654,11 +787,9 @@ def chat_file():
         response  = ollama_generate(f"{build_system()}\n\nUser: {message}\n\nKJ2:", images=[img_b64])
         return jsonify({"response": response})
 
-    # PDFs
     if ext == '.pdf':
         try:
-            import pdfplumber
-            import io
+            import pdfplumber, io
             text = ''
             with pdfplumber.open(io.BytesIO(f.read())) as pdf:
                 for page in pdf.pages:
@@ -669,13 +800,12 @@ def chat_file():
                 import io
                 from pypdf import PdfReader
                 reader = PdfReader(io.BytesIO(f.read()))
-                text = '\n'.join(page.extract_text() or '' for page in reader.pages)[:8000]
+                text   = '\n'.join(page.extract_text() or '' for page in reader.pages)[:8000]
             except Exception as e:
                 return jsonify({"response": f"Cannot read PDF — install pdfplumber: pip install pdfplumber ({e})"})
         except Exception as e:
             return jsonify({"response": f"Could not read PDF: {e}"})
 
-    # Word docs
     elif ext in ('.docx', '.doc'):
         try:
             import io
@@ -687,11 +817,9 @@ def chat_file():
         except Exception as e:
             return jsonify({"response": f"Could not read file: {e}"})
 
-    # Excel
     elif ext in ('.xlsx', '.xls'):
         try:
-            import io
-            import openpyxl
+            import io, openpyxl
             wb   = openpyxl.load_workbook(io.BytesIO(f.read()), read_only=True, data_only=True)
             rows = []
             for ws in wb.worksheets:
@@ -704,7 +832,6 @@ def chat_file():
         except Exception as e:
             return jsonify({"response": f"Could not read file: {e}"})
 
-    # Plain text / code
     elif ext in READABLE_EXTS:
         try:
             text = f.read().decode('utf-8', errors='replace')[:8000]
@@ -714,10 +841,10 @@ def chat_file():
     else:
         return jsonify({"response": f"File type {ext} not supported. Supported: txt, pdf, csv, docx, xlsx, images, and most code files."})
 
-    prompt = (f"{build_system()}\n\n"
-              f"The owner has shared a file: {fname}\n\n"
-              f"FILE CONTENTS:\n{text}\n\n"
-              f"Owner's request: {message}\n\nKJ2:")
+    prompt   = (f"{build_system()}\n\n"
+                f"The owner has shared a file: {fname}\n\n"
+                f"FILE CONTENTS:\n{text}\n\n"
+                f"Owner's request: {message}\n\nKJ2:")
     response = ollama_generate(prompt)
     return jsonify({"response": response, "file_read": fname})
 
@@ -728,7 +855,7 @@ def mic_start():
     try:
         import speech_recognition as sr
         r = sr.Recognizer()
-        r.energy_threshold = 300
+        r.energy_threshold       = 300
         r.dynamic_energy_threshold = True
         try:
             import pyaudio
@@ -736,18 +863,14 @@ def mic_start():
                 r.adjust_for_ambient_noise(source, duration=0.8)
                 audio = r.listen(source, timeout=15, phrase_time_limit=45)
         except (ImportError, OSError):
-            import sounddevice as sd
-            import numpy as np
-            import io, wave
+            import sounddevice as sd, numpy as np, io, wave
             sample_rate = 16000
-            duration = 8
-            recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
+            duration    = 8
+            recording   = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=1, dtype='int16')
             sd.wait()
             buf = io.BytesIO()
             with wave.open(buf, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(sample_rate)
+                wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(sample_rate)
                 wf.writeframes(recording.tobytes())
             buf.seek(0)
             audio = sr.AudioData(buf.read(), sample_rate, 2)
@@ -822,7 +945,7 @@ def image_clear():
             os.remove(os.path.join(VIDEOMAKER_INPUT, fn))
     return jsonify({"ok": True})
 
-# ── Open folders ─────────────────────────────────────────────────────────────────
+# ── Open folders ──────────────────────────────────────────────────────────────
 
 @app.route('/open/videomaker', methods=['POST'])
 def open_videomaker():
@@ -844,7 +967,7 @@ def _open_folder(path):
     else:
         subprocess.Popen(['xdg-open', path])
 
-# ── TAB 4: VIDEO ─────────────────────────────────────────────────────────────────
+# ── TAB 4: VIDEO ──────────────────────────────────────────────────────────────
 
 VIDEO_PROMPTS = {
     "script":      "Write a complete video script for: {topic}. Include an attention-grabbing intro hook, all main points with enough detail to fill the full length, and a strong outro call-to-action. Write it as natural speech in my voice, ready to film.",
@@ -866,7 +989,7 @@ def video_help():
     response    = ollama_generate(f"{build_system()}\n\nUser: {task_prompt}\n\nKJ2:")
     return jsonify({"response": response})
 
-# ── TAB 5: TASKS ─────────────────────────────────────────────────────────────────
+# ── TAB 5: TASKS ──────────────────────────────────────────────────────────────
 
 @app.route('/tasks')
 def get_tasks():
@@ -874,10 +997,10 @@ def get_tasks():
 
 @app.route('/tasks/generate', methods=['POST'])
 def generate_tasks():
-    prompt = (f"{build_system()}\n\nGenerate today's morning briefing task list. "
-              "Create 8-10 specific actionable tasks based on my profile, goals and business. "
-              'Return ONLY a JSON array. Each item: "task" (string), "priority" ("high"/"medium"/"low"), '
-              '"category" (string like Email/Social/Business/Personal). No markdown, just JSON.\n\nKJ2:')
+    prompt   = (f"{build_system()}\n\nGenerate today's morning briefing task list. "
+                "Create 8-10 specific actionable tasks based on my profile, goals and business. "
+                'Return ONLY a JSON array. Each item: "task" (string), "priority" ("high"/"medium"/"low"), '
+                '"category" (string like Email/Social/Music/SAFS/Personal). No markdown, just JSON.\n\nKJ2:')
     response = ollama_generate(prompt)
     try:
         start = response.find('['); end = response.rfind(']') + 1
@@ -885,7 +1008,7 @@ def generate_tasks():
         tasks = [{"id": i, "task": (t.get("task") if isinstance(t, dict) else str(t)),
                   "priority": (t.get("priority", "medium") if isinstance(t, dict) else "medium"),
                   "category": (t.get("category", "General") if isinstance(t, dict) else "General"),
-                  "status": "pending"} for i, t in enumerate(raw)]
+                  "status":   "pending"} for i, t in enumerate(raw)]
     except Exception:
         tasks = [{"id": 0, "task": "Could not generate tasks — try again.", "priority": "medium",
                   "category": "General", "status": "pending"}]
@@ -908,12 +1031,12 @@ def clear_tasks():
     save_tasks([])
     return jsonify({"ok": True})
 
-# ── TAB 6: INSTRUCTIONS ──────────────────────────────────────────────────────────
+# ── TAB 6: INSTRUCTIONS ───────────────────────────────────────────────────────
 
 @app.route('/instructions')
 def get_instructions():
     cfg = load_config()
-    return jsonify({"permanent_rules": cfg.get('permanent_rules', []),
+    return jsonify({"permanent_rules":    cfg.get('permanent_rules', []),
                     "extra_instructions": cfg.get('extra_instructions', [])})
 
 @app.route('/instructions', methods=['POST'])
@@ -939,7 +1062,7 @@ def delete_instruction(idx):
         config.update(cfg)
     return jsonify({"ok": True})
 
-# ── Memory ────────────────────────────────────────────────────────────────────────
+# ── Memory ────────────────────────────────────────────────────────────────────
 
 @app.route('/memory', methods=['GET'])
 def get_memory():
@@ -950,10 +1073,9 @@ def clear_memory():
     save_memory([])
     return jsonify({"ok": True})
 
-# ── Web automation ────────────────────────────────────────────────────────────────
+# ── Web automation ────────────────────────────────────────────────────────────
 
 def _do_automation(session_id, url, field_plan):
-    """Runs in a background thread: opens Chrome, fills the form, waits."""
     try:
         from selenium import webdriver
         from selenium.webdriver.common.by import By
@@ -967,7 +1089,7 @@ def _do_automation(session_id, url, field_plan):
         options.add_argument('--disable-blink-features=AutomationControlled')
         options.add_experimental_option('excludeSwitches', ['enable-automation'])
         service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
+        driver  = webdriver.Chrome(service=service, options=options)
 
         ACTIVE_SESSIONS[session_id]['driver'] = driver
         ACTIVE_SESSIONS[session_id]['status'] = 'filling'
@@ -980,10 +1102,9 @@ def _do_automation(session_id, url, field_plan):
 
         for el in inputs:
             try:
-                name  = el.get_attribute('name') or el.get_attribute('id') or el.get_attribute('placeholder') or ''
-                itype = el.get_attribute('type') or 'text'
-                tag   = el.tag_name.lower()
-                # Find matching value from LLM plan
+                name      = el.get_attribute('name') or el.get_attribute('id') or el.get_attribute('placeholder') or ''
+                itype     = el.get_attribute('type') or 'text'
+                tag       = el.tag_name.lower()
                 match_val = None
                 for key, val in field_plan.items():
                     if key.lower() in name.lower() or name.lower() in key.lower():
@@ -1003,12 +1124,11 @@ def _do_automation(session_id, url, field_plan):
             except Exception:
                 continue
 
-        ACTIVE_SESSIONS[session_id]['status']  = 'awaiting_approval'
-        ACTIVE_SESSIONS[session_id]['filled']  = filled
+        ACTIVE_SESSIONS[session_id]['status'] = 'awaiting_approval'
+        ACTIVE_SESSIONS[session_id]['filled'] = filled
     except Exception as e:
         ACTIVE_SESSIONS[session_id]['status'] = 'error'
         ACTIVE_SESSIONS[session_id]['error']  = str(e)
-
 
 @app.route('/automation/fill', methods=['POST'])
 def automation_fill():
@@ -1022,50 +1142,39 @@ def automation_fill():
     task = data.get('task', '').strip()
     if not url:
         return jsonify({"error": "No URL provided"}), 400
-
-    # Ask LLM what to fill based on owner profile + task
-    prompt = (f"{build_system()}\n\n"
-              f"Owner wants to fill a web form at: {url}\n"
-              f"Task: {task}\n\n"
-              f"Return ONLY a JSON object with field names as keys and what to fill as values. "
-              f"Use only info from the owner profile above. Example: {{\"name\": \"Keith\", \"email\": \"k@example.com\"}}. "
-              f"No explanation, just JSON. KJ2:")
-    raw_plan = ollama_generate(prompt)
+    prompt     = (f"{build_system()}\n\n"
+                  f"Owner wants to fill a web form at: {url}\n"
+                  f"Task: {task}\n\n"
+                  f"Return ONLY a JSON object with field names as keys and what to fill as values. "
+                  f"Use only info from the owner profile above. No explanation, just JSON. KJ2:")
+    raw_plan   = ollama_generate(prompt)
     try:
-        start = raw_plan.find('{'); end = raw_plan.rfind('}') + 1
+        start      = raw_plan.find('{'); end = raw_plan.rfind('}') + 1
         field_plan = json.loads(raw_plan[start:end]) if start >= 0 else {}
     except Exception:
         field_plan = {}
-
     session_id = str(uuid.uuid4())[:8]
     ACTIVE_SESSIONS[session_id] = {
         'status': 'starting', 'url': url, 'task': task,
         'field_plan': field_plan, 'driver': None, 'filled': {}, 'error': None
     }
-
     threading.Thread(target=_do_automation, args=(session_id, url, field_plan), daemon=True).start()
     return jsonify({
-        "session_id":  session_id,
-        "url":         url,
-        "field_plan":  field_plan,
-        "message":     (f"Opening {url} in Chrome now. I am filling the form as we speak. "
-                        f"Watch the browser window — once I am done it will be waiting for your approval. "
-                        f"Type 'submit {session_id}' to send or 'cancel {session_id}' to close without submitting."),
+        "session_id":         session_id,
+        "url":                url,
+        "field_plan":         field_plan,
+        "message":            (f"Opening {url} in Chrome now. Filling the form as we speak. "
+                               f"Watch the browser — once done it will wait for your approval. "
+                               f"Type 'submit {session_id}' to send or 'cancel {session_id}' to close without submitting."),
         "automation_started": True
     })
-
 
 @app.route('/automation/status/<session_id>', methods=['GET'])
 def automation_status(session_id):
     sess = ACTIVE_SESSIONS.get(session_id)
     if not sess:
         return jsonify({"error": "Session not found"}), 404
-    return jsonify({
-        "status": sess['status'],
-        "filled": sess.get('filled', {}),
-        "error":  sess.get('error')
-    })
-
+    return jsonify({"status": sess['status'], "filled": sess.get('filled', {}), "error": sess.get('error')})
 
 @app.route('/automation/submit/<session_id>', methods=['POST'])
 def automation_submit(session_id):
@@ -1077,22 +1186,18 @@ def automation_submit(session_id):
         return jsonify({"error": "Browser not ready"}), 400
     try:
         from selenium.webdriver.common.by import By
-        # Click the first submit button found
         btns = driver.find_elements(By.CSS_SELECTOR, 'input[type=submit], button[type=submit], button')
         for btn in btns:
             txt = btn.text.lower()
             if any(w in txt for w in ['submit', 'send', 'apply', 'register', 'continue', 'next', 'sign up', 'join', 'save']):
-                btn.click()
-                break
+                btn.click(); break
         else:
-            if btns:
-                btns[-1].click()
+            if btns: btns[-1].click()
         sess['status'] = 'submitted'
         del ACTIVE_SESSIONS[session_id]
         return jsonify({"ok": True, "message": "Submitted."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/automation/cancel/<session_id>', methods=['POST'])
 def automation_cancel(session_id):
@@ -1101,14 +1206,12 @@ def automation_cancel(session_id):
         return jsonify({"ok": True})
     driver = sess.get('driver')
     if driver:
-        try:
-            driver.quit()
-        except Exception:
-            pass
+        try: driver.quit()
+        except: pass
     del ACTIVE_SESSIONS[session_id]
     return jsonify({"ok": True, "message": "Cancelled — browser closed."})
 
-# ── File search exceptions ────────────────────────────────────────────────────────
+# ── File search exceptions ────────────────────────────────────────────────────
 
 @app.route('/settings/file-exceptions', methods=['GET'])
 def get_file_exceptions():
@@ -1125,18 +1228,22 @@ def add_file_exception():
     save_config(cfg)
     return jsonify({"ok": True})
 
-# ── Start ─────────────────────────────────────────────────────────────────────────
+# ── Start ─────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    name = config.get('user_name', 'there')
+    name = config.get('user_name', 'Keith')
     print(f"\n{'='*54}")
     print(f"  KJ2 Personal AI Agent")
-    print(f"  Hello {name}!")
+    print(f"  G'day {name}!")
     print(f"  CHAT | MIC | IMAGES | VIDEO | TASKS | INSTRUCTIONS")
     print(f"{'='*54}")
     print(f"  Opening at: http://localhost:5050")
     print(f"  Memory: {MEMORY_PATH}")
+    print(f"  Web Search: Tavily API")
+    print(f"  Gmail + YouTube: OAuth2 Connected")
     print(f"{'='*54}\n")
-    threading.Thread(target=lambda: (time.sleep(2), subprocess.Popen(['start', 'chrome', 'http://localhost:5050'], shell=True)),
-                     daemon=True).start()
+    threading.Thread(
+        target=lambda: (time.sleep(2), subprocess.Popen(['start', 'chrome', 'http://localhost:5050'], shell=True)),
+        daemon=True
+    ).start()
     app.run(host='0.0.0.0', port=5050, debug=False)

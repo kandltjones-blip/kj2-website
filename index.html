@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KJ2 — Your Personal AI Agent</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --gold: #C9A84C;
+    --gold-light: #E8C96A;
+    --dark: #0A0A0A;
+    --dark2: #111111;
+    --dark3: #1A1A1A;
+    --dark4: #222222;
+    --text: #E8E8E8;
+    --text-dim: #888888;
+    --accent: #C9A84C;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--dark);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ANIMATED BACKGROUND */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: 
+      radial-gradient(ellipse at 20% 20%, rgba(201,168,76,0.06) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(201,168,76,0.04) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* SCREEN MANAGEMENT */
+  .screen { display: none; animation: fadeIn 0.5s ease; }
+  .screen.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* WELCOME SCREEN */
+  .welcome-badge {
+    display: inline-block;
+    background: rgba(201,168,76,0.1);
+    border: 1px solid rgba(201,168,76,0.3);
+    color: var(--gold);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+
+  .welcome-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(48px, 8vw, 88px);
+    line-height: 0.95;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .welcome-title span {
+    color: var(--gold);
+    display: block;
+  }
+
+  .welcome-subtitle {
+    font-size: 18px;
+    color: var(--text-dim);
+    font-weight: 300;
+    margin-bottom: 48px;
+    line-height: 1.6;
+    max-width: 580px;
+  }
+
+  .welcome-subtitle strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .divider {
+    height: 1px;
+    background: linear-gradient(to right, transparent, rgba(201,168,76,0.4), transparent);
+    margin: 48px 0;
+  }
+
+  .intro-text {
+    background: var(--dark3);
+    border: 1px solid rgba(201,168,76,0.15);
+    border-left: 3px solid var(--gold);
+    padding: 28px 32px;
+    border-radius: 8px;
+    font-size: 16px;
+    line-height: 1.8;
+    color: var(--text);
+    margin-bottom: 40px;
+  }
+
+  /* SUGGESTIONS */
+  .suggestions-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin-bottom: 20px;
+  }
+
+  .suggestions-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 40px;
+  }
+
+  .suggestion-card {
+    background: var(--dark3);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: default;
+  }
+
+  .suggestion-card:hover {
+    border-color: rgba(201,168,76,0.3);
+    background: var(--dark4);
+  }
+
+  .suggestion-number {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    color: var(--gold);
+    line-height: 1;
+    min-width: 28px;
+  }
+
+  .suggestion-text {
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+
+  .suggestion-text strong {
+    display: block;
+    color: var(--text);
+    font-weight: 500;
+    margin-bottom: 3px;
+    font-size: 14px;
+  }
+
+  /* BUTTONS */
+  .btn-primary {
+    background: var(--gold);
+    color: var(--dark);
+    border: none;
+    padding: 16px 40px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 2px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    display: inline-block;
+  }
+
+  .btn-primary:hover { background: var(--gold-light); transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 14px 32px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-left: 12px;
+  }
+
+  .btn-secondary:hover { border-color: rgba(201,168,76,0.4); color: var(--text); }
+
+  /* STORY SCREEN */
+  .screen-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 48px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .screen-title span { color: var(--gold); }
+
+  .screen-desc {
+    color: var(--text-dim);
+    font-size: 15px;
+    line-height: 1.7;
+    margin-bottom: 32px;
+    max-width: 620px;
+  }
+
+  .char-counter {
+    text-align: right;
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .char-counter span { color: var(--gold); font-weight: 600; }
+
+  textarea {
+    width: 100%;
+    min-height: 360px;
+    background: var(--dark3);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    padding: 24px;
+    resize: vertical;
+    transition: border-color 0.2s;
+    outline: none;
+  }
+
+  textarea:focus { border-color: rgba(201,168,76,0.5); }
+  textarea::placeholder { color: var(--text-dim); }
+
+  .tip-box {
+    background: rgba(201,168,76,0.06);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 20px;
+    font-size: 13.5px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .tip-box strong { color: var(--gold); }
+
+  /* QUESTIONS SCREEN */
+  .question-block {
+    background: var(--dark3);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px;
+    padding: 28px;
+    margin-bottom: 16px;
+    transition: border-color 0.2s;
+  }
+
+  .question-block:hover { border-color: rgba(201,168,76,0.2); }
+
+  .question-label {
+    font-size: 13px;
+    color: var(--gold);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .question-text {
+    font-size: 16px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+
+  .yn-buttons {
+    display: flex;
+    gap: 10px;
+  }
+
+  .yn-btn {
+    padding: 10px 28px;
+    border-radius: 6px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: transparent;
+    color: var(--text-dim);
+    transition: all 0.2s;
+  }
+
+  .yn-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .yn-btn.selected-yes { background: var(--gold); color: var(--dark); border-color: var(--gold); }
+  .yn-btn.selected-no { background: var(--dark4); color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+  /* ADD INSTRUCTION BUTTON */
+  .add-instruction-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: transparent;
+    border: 1px dashed rgba(201,168,76,0.4);
+    color: var(--gold);
+    padding: 16px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    width: 100%;
+    margin-top: 8px;
+    transition: all 0.2s;
+  }
+
+  .add-instruction-btn:hover { background: rgba(201,168,76,0.06); border-color: var(--gold); }
+
+  .add-instruction-area {
+    display: none;
+    margin-top: 16px;
+  }
+
+  .add-instruction-area.open { display: block; }
+
+  .add-instruction-area input {
+    width: 100%;
+    background: var(--dark3);
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    padding: 14px 18px;
+    outline: none;
+    margin-bottom: 10px;
+  }
+
+  .add-instruction-area input:focus { border-color: var(--gold); }
+
+  /* PERMISSION SCREEN */
+  .permission-box {
+    background: var(--dark3);
+    border: 2px solid rgba(201,168,76,0.3);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    margin: 40px 0;
+  }
+
+  .permission-icon {
+    font-size: 48px;
+    margin-bottom: 20px;
+  }
+
+  .permission-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    letter-spacing: 2px;
+    color: var(--gold);
+    margin-bottom: 16px;
+  }
+
+  .permission-text {
+    font-size: 15px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    max-width: 500px;
+    margin: 0 auto 32px;
+  }
+
+  /* COMPLETE SCREEN */
+  .complete-box {
+    text-align: center;
+    padding: 60px 40px;
+  }
+
+  .complete-icon {
+    font-size: 64px;
+    margin-bottom: 24px;
+    display: block;
+  }
+
+  .complete-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 56px;
+    letter-spacing: 3px;
+    color: var(--gold);
+    margin-bottom: 16px;
+  }
+
+  .complete-text {
+    font-size: 16px;
+    color: var(--text-dim);
+    line-height: 1.8;
+    max-width: 500px;
+    margin: 0 auto 40px;
+  }
+
+  /* PROGRESS BAR */
+  .progress-bar {
+    height: 2px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    margin-bottom: 48px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(to right, var(--gold), var(--gold-light));
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .step-label {
+    font-size: 12px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  @media (max-width: 600px) {
+    .suggestions-grid { grid-template-columns: 1fr; }
+    .welcome-title { font-size: 52px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- SCREEN 1: WELCOME -->
+  <div class="screen active" id="screen-welcome">
+    <div class="welcome-badge">KJ2 Personal AI Agent</div>
+    <h1 class="welcome-title">Welcome to<span>KJ2</span></h1>
+    <p class="welcome-subtitle">Your AI Agent that will <strong>change your life.</strong><br>Built to work like you, think like you, and never stop working for you.</p>
+
+    <div style="background:rgba(201,168,76,0.1);border:2px solid var(--gold);border-radius:10px;padding:28px 32px;margin-bottom:32px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:var(--gold);margin-bottom:14px;">⚠ BEFORE YOU START — YOU NEED A FREE TAVILY ACCOUNT</div>
+      <p style="font-size:15px;line-height:1.8;color:var(--text);margin-bottom:16px;">KJ2 uses <strong style="color:var(--gold);">Tavily</strong> to search the internet for real results. Without it your agent cannot search the web. It is free and takes two minutes to set up.</p>
+      <p style="font-size:15px;line-height:1.8;color:var(--text);margin-bottom:16px;"><strong style="color:var(--gold);">Step 1.</strong> Open a free account at <strong>tavily.com</strong></p>
+      <p style="font-size:15px;line-height:1.8;color:var(--text);margin-bottom:16px;"><strong style="color:var(--gold);">Step 2.</strong> Once signed in you will land on the Overview page. Your API key is shown there — copy it by clicking the two squares icon 📋 next to the key.</p>
+      <p style="font-size:15px;line-height:1.8;color:var(--text);margin-bottom:16px;"><strong style="color:var(--gold);">Step 3.</strong> Keep that key handy — you will paste it into KJ2 when you run it for the first time.</p>
+      <div style="background:rgba(0,0,0,0.3);border-radius:6px;padding:14px 18px;font-size:13px;color:var(--text-dim);line-height:1.7;">
+        <strong style="color:var(--gold);">Tavily Usage Note:</strong> The free account gives you 1,000 searches per month. Heavy users may need a paid account — prices are in <strong style="color:var(--text);">USD</strong>. Pay as you go at <strong style="color:var(--text);">USD $0.008 per search</strong>, or choose a monthly plan for 4,000+ searches. Check current pricing at <strong style="color:var(--text);">tavily.com/pricing</strong>. For most users the free account is more than enough to start.
+      </div>
+    </div>
+
+    <div class="tip-box">
+      <strong>OAuth 2.0 — What is it?</strong> When KJ2 first opens on your computer it will ask you to log in to Google. This is a one-time secure connection so KJ2 can manage your Gmail and YouTube on your behalf. You click Allow — it never asks again. Your password is never seen or stored by KJ2.
+    </div>
+
+    <div class="divider"></div>
+
+    <p class="suggestions-title">10 Things Your Agent Can Do</p>
+    <div class="suggestions-grid">
+      <div class="suggestion-card">
+        <div class="suggestion-number">01</div>
+        <div class="suggestion-text"><strong>Manage All Your Emails</strong>Securely manage emails via official API integrations—sort, flag, draft replies and follow up automatically</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">02</div>
+        <div class="suggestion-text"><strong>Post to Social Media</strong>Post to Social Media via official platform connections—write and schedule posts in your voice across your channels</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">03</div>
+        <div class="suggestion-text"><strong>Build and Update Your Website</strong>Update your website content securely using official API endpoints for seamless, stable site management</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">04</div>
+        <div class="suggestion-text"><strong>Track Important Dates</strong>Patents, renewals, deadlines, contracts — never miss a critical date again</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">05</div>
+        <div class="suggestion-text"><strong>Run Your Daily Tasks</strong>Present your daily task list every morning and execute approved tasks for you</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">06</div>
+        <div class="suggestion-text"><strong>Research Your Industry</strong>Find opportunities, trends and gaps in your market every day</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">07</div>
+        <div class="suggestion-text"><strong>Write in Your Voice</strong>Learns how you write, how you think, and gets better every single session</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">08</div>
+        <div class="suggestion-text"><strong>Build Ads and Promotions</strong>Write and schedule paid ads and promotions for your products and services</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">09</div>
+        <div class="suggestion-text"><strong>Listen and Learn from You</strong>Connect a microphone and teach your agent by talking — it remembers everything</div>
+      </div>
+      <div class="suggestion-card">
+        <div class="suggestion-number">10</div>
+        <div class="suggestion-text"><strong>Never Say Die</strong>Your dreams are your agent's dreams — it works 24/7 to make them happen</div>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="goTo('screen-story')">Tell Me Everything — Let's Build Your Agent</button>
+  </div>
+
+  <!-- SCREEN 2: YOUR STORY -->
+  <div class="screen" id="screen-story">
+    <div class="step-label">Step 1 of 3</div>
+    <div class="progress-bar"><div class="progress-fill" style="width:33%"></div></div>
+
+    <h2 class="screen-title">Tell Me<span> Everything</span></h2>
+    <p class="screen-desc">Write everything you want your agent to do for you. Your business, your projects, your daily needs, your goals, your problems. The more you tell me the better I become. Go hard — you have 10,000 characters.</p>
+
+    <div class="char-counter">Characters used: <span id="char-count">0</span> / 10,000</div>
+    <textarea id="story-input" maxlength="10000" placeholder="Example: I run a small business selling handmade furniture online. Every day I need someone to check my emails and reply to customer enquiries. I sell through my website and I need new products added regularly. I post on Facebook and Instagram but never have time. I have quotes I need to follow up on that go cold. I have a supplier I need to chase every month for invoices. I want to grow my social media following. I want ads running but do not know how..." oninput="updateCharCount()"></textarea>
+
+    <div class="tip-box">
+      <strong>Tip:</strong> Include everything — big and small. What do you do every day that eats your time? What do you keep forgetting to do? What would change your business if someone just handled it for you?
+    </div>
+
+    <br><br>
+    <button class="btn-primary" onclick="submitStory()">I Have Told You Everything — Build My Questions</button>
+    <button class="btn-secondary" onclick="goTo('screen-welcome')">Back</button>
+  </div>
+
+  <!-- SCREEN 3: QUESTIONS -->
+  <div class="screen" id="screen-questions">
+    <div class="step-label">Step 2 of 3</div>
+    <div class="progress-bar"><div class="progress-fill" style="width:66%"></div></div>
+
+    <h2 class="screen-title">Your<span> Questions</span></h2>
+    <p class="screen-desc">Based on what you told me — answer these yes or no. Every answer makes your agent more accurate. Add extra instructions at any time using the button below.</p>
+
+    <!-- QUESTION 1 — ALWAYS FIRST -->
+    <div class="question-block">
+      <div class="question-label">Question 1 — Permission</div>
+      <div class="question-text">Can I have permission to access all your files on your computer to make these things happen?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q1', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q1', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 2 — Personality</div>
+      <div class="question-text">Do you want your agent to write and communicate in your personal voice and style?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q2', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q2', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 3 — Voice Learning</div>
+      <div class="question-text">Do you want to connect a microphone so you can speak to your agent and teach it how you think?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q3', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q3', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 4 — Emails</div>
+      <div class="question-text">Do you want your agent to manage your emails — sort, flag, draft replies and follow up unanswered ones automatically?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q4', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q4', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 5 — Social Media</div>
+      <div class="question-text">Do you want your agent to write and post your social media content in your voice for your approval?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q5', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q5', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 6 — Website</div>
+      <div class="question-text">Do you want your agent to build and update your website content automatically?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q6', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q6', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 7 — Paid Ads</div>
+      <div class="question-text">Do you want your agent to build weekly paid ads for Facebook and Instagram for your approval?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q7', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q7', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 8 — Important Dates</div>
+      <div class="question-text">Do you want your agent to track important dates and give you warnings at 3 months, 2 months and 1 month before deadlines?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q8', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q8', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 9 — Approvals</div>
+      <div class="question-text">Do you want to approve every action before your agent executes it — nothing happens without your say so?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q9', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q9', 'no')">NO</button>
+      </div>
+    </div>
+
+    <div class="question-block">
+      <div class="question-label">Question 10 — Daily Briefing</div>
+      <div class="question-text">Do you want your agent to greet you every morning with a full briefing of what needs doing today?</div>
+      <div class="yn-buttons">
+        <button class="yn-btn" onclick="selectAnswer(this, 'q10', 'yes')">YES</button>
+        <button class="yn-btn" onclick="selectAnswer(this, 'q10', 'no')">NO</button>
+      </div>
+    </div>
+
+    <!-- ADD INSTRUCTION BUTTON -->
+    <button class="add-instruction-btn" onclick="toggleAddInstruction()">
+      ＋ Add a New Instruction to My Agent
+    </button>
+    <div class="add-instruction-area" id="add-instruction-area">
+      <input type="text" id="new-instruction" placeholder="Type your new instruction here — be as specific as you like..." maxlength="500">
+      <button class="btn-primary" style="font-size:16px; padding:12px 28px;" onclick="saveInstruction()">Save Instruction</button>
+    </div>
+
+    <div id="saved-instructions"></div>
+
+    <br><br>
+    <button class="btn-primary" onclick="goTo('screen-permission')">Build My Agent</button>
+    <button class="btn-secondary" onclick="goTo('screen-story')">Back</button>
+  </div>
+
+  <!-- SCREEN 4: COMPLETE -->
+  <div class="screen" id="screen-permission">
+    <div class="step-label">Step 3 of 3</div>
+    <div class="progress-bar"><div class="progress-fill" style="width:100%"></div></div>
+
+    <div class="complete-box">
+      <span class="complete-icon">⚡</span>
+      <div class="complete-title">Your Agent Is Ready</div>
+      <p class="complete-text">
+        I have read everything you told me. I have your answers. I know what you need.<br><br>
+        Your personal KJ Agent is now being configured to your exact requirements. It will work for you 24 hours a day, 7 days a week. It will never say die. Your dreams are its dreams.<br><br>
+        <strong style="color: var(--gold);">Welcome to the future of running your business.</strong>
+      </p>
+      <button class="btn-primary" onclick="downloadConfig()">Download My Agent Configuration</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function goTo(screenId) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(screenId).classList.add('active');
+    window.scrollTo(0, 0);
+  }
+
+  function updateCharCount() {
+    const val = document.getElementById('story-input').value.length;
+    document.getElementById('char-count').textContent = val;
+  }
+
+  function submitStory() {
+    const story = document.getElementById('story-input').value.trim();
+    if (story.length < 50) {
+      alert('Please tell me more — the more you share the better your agent will be.');
+      return;
+    }
+    goTo('screen-questions');
+  }
+
+  function selectAnswer(btn, questionId, answer) {
+    const parent = btn.closest('.yn-buttons');
+    parent.querySelectorAll('.yn-btn').forEach(b => {
+      b.classList.remove('selected-yes', 'selected-no');
+    });
+    btn.classList.add(answer === 'yes' ? 'selected-yes' : 'selected-no');
+    btn.dataset.answer = answer;
+  }
+
+  function toggleAddInstruction() {
+    const area = document.getElementById('add-instruction-area');
+    area.classList.toggle('open');
+  }
+
+  const extraInstructions = [];
+
+  function saveInstruction() {
+    const input = document.getElementById('new-instruction');
+    const val = input.value.trim();
+    if (!val) return;
+    extraInstructions.push(val);
+    input.value = '';
+    const container = document.getElementById('saved-instructions');
+    const div = document.createElement('div');
+    div.style.cssText = 'background:rgba(201,168,76,0.08);border:1px solid rgba(201,168,76,0.2);border-radius:6px;padding:12px 16px;margin-top:10px;font-size:14px;color:#E8E8E8;';
+    div.textContent = '✓ ' + val;
+    container.appendChild(div);
+    document.getElementById('add-instruction-area').classList.remove('open');
+  }
+
+  function downloadConfig() {
+    const story = document.getElementById('story-input').value;
+    const answers = {};
+    for (let i = 1; i <= 10; i++) {
+      const btns = document.querySelectorAll(`[onclick*="'q${i}'"]`);
+      btns.forEach(b => {
+        if (b.classList.contains('selected-yes')) answers['q' + i] = 'YES';
+        if (b.classList.contains('selected-no')) answers['q' + i] = 'NO';
+      });
+    }
+    const config = {
+      agent: "KJ2 Personal AI Agent",
+      configured: new Date().toLocaleDateString('en-AU'),
+      story: story,
+      answers: answers,
+      extra_instructions: extraInstructions
+    };
+    const blob = new Blob([JSON.stringify(config, null, 2)], {type: 'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'KJ2_Agent_Config.json';
+    a.click();
+  }
+</script>
+</body>
+</html>
